@@ -1,6 +1,13 @@
 import cv2
 from ultralytics import YOLO
 import time
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from dotenv import load_dotenv
+import os
+
+load_dotenv()  # Loads variables from .env into the environment
 
 def calculate_people_count_by_frame(model, caps):
     average = 0
@@ -34,6 +41,46 @@ def calculate_people_count_by_frame(model, caps):
 
 def warn():
     print("Too many people")
+    send_email(os.getenv("sender"), os.getenv("password"), os.getenv("receiver"), "Too many people", "Too many people")
+
+def send_email(sender_username, sender_password, recipient_email, subject, message_body):
+    """
+    Send an email using SMTP protocol
+    
+    Parameters:
+    - sender_username: Your email address (e.g., 'your_email@gmail.com')
+    - sender_password: Your email password or app-specific password
+    - recipient_email: The recipient's email address
+    - subject: Email subject line
+    - message_body: The content of the email
+    
+    Returns:
+    - True if email sent successfully, False otherwise
+    """
+    try:
+        # Set up the MIME
+        message = MIMEMultipart()
+        message['From'] = sender_username
+        message['To'] = recipient_email
+        message['Subject'] = subject
+        
+        # Attach the message body
+        message.attach(MIMEText(message_body, 'plain'))
+        smtp_server = 'smtp.gmail.com'
+        smtp_port = 587
+        
+        # Create SMTP session
+        with smtplib.SMTP(smtp_server, smtp_port) as server:
+            server.starttls()  # Enable security
+            server.login(sender_username, sender_password)  # Login
+            text = message.as_string()
+            server.sendmail(sender_username, recipient_email, text)
+        
+        return True
+    
+    except Exception as e:
+        print(f"Error sending email: {e}")
+        return False
 
 def main(limit, model, caps):
     detected = False
@@ -72,4 +119,4 @@ def main(limit, model, caps):
 
 
 if __name__ == "__main__":
-    main(3, YOLO('yolov8m-pose.pt'), [cv2.VideoCapture(0), cv2.VideoCapture(2)])
+    main(3, YOLO(os.getenv("model")), [cv2.VideoCapture(int(os.getenv("cam1"))), cv2.VideoCapture(int(os.getenv("cam2")))])
