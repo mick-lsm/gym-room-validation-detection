@@ -8,6 +8,8 @@ from email.mime.image import MIMEImage
 from dotenv import load_dotenv
 import os
 import winsound
+import threading
+import asyncio
 
 load_dotenv()  # Loads variables from .env into the environment
 
@@ -45,17 +47,29 @@ def calculate_people_count_by_frame(model, caps):
 def beep_beep_alert():
     for __ in range(3):  # Nine beeps
         for _ in range(3):  # Three beeps
-            winsound.Beep(1000, 1000)  # Frequency: 1000Hz, Duration: 200ms
-            time.sleep(0.2)  # Short pause between beeps
-        time.sleep(0.5)
+            winsound.Beep(1000, 2000)  # Frequency: 1000Hz, Duration: 200ms
+            time.sleep(0.5)  # Short pause between beeps
+        time.sleep(1.2)
 
 
-def warn(caps):
+def warn(caps, model, delayedSeconds):
     print("Too many people")
-    beep_beep_alert()
-    send_email(os.getenv("sender"), os.getenv("password"), os.getenv("receiver"), "Too many people", "Too many people", caps)
+    threading.Thread(target=beep_beep_alert, daemon=True).start()
+    threading.Thread(
+        target=send_email,
+        args=(
+            os.getenv("sender"),
+            os.getenv("password"),
+            os.getenv("receiver"),
+            "Gym Room Alert",
+            f"Please check the gym room. The images of the cameras are attached and the detection has been delayed for {delayedSeconds} seconds.",
+            caps,
+            model
+        ),
+        daemon=True
+    ).start()
 
-def send_email(sender_username, sender_password, recipient_email, subject, message_body, caps):
+def send_email(sender_username, sender_password, recipient_email, subject, message_body, caps, model):
     """
     Send an email with the current frame of the video capture array as an attachment,
     drawing human detection boxes on the frame.
@@ -70,9 +84,6 @@ def send_email(sender_username, sender_password, recipient_email, subject, messa
         # Attach the message body
         message.attach(MIMEText(message_body, 'plain'))
 
-        # Load YOLO model for detection
-        model = YOLO(os.getenv("model"))
-
         for i, cap in enumerate(caps):
             if cap.isOpened():
                 ret, frame = cap.read()
@@ -81,13 +92,13 @@ def send_email(sender_username, sender_password, recipient_email, subject, messa
                     results = model(frame, verbose=False)
                     # Draw detection boxes on the frame
                     annotated_frame = results[0].plot()
+                    cv2.putText(annotated_frame, f'People Count: {len(results[0].boxes)}', (10, 30),
+                                cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
 
-                    # Convert from BGR to RGB for email
-                    frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-
-                    # Encode image in memory
-                    _, img_encoded = cv2.imencode('.png', frame_rgb)
+                    # No color conversion needed, keep BGR for PNG/JPEG
+                    _, img_encoded = cv2.imencode('.png', annotated_frame)
                     ext = "png"
+                    
 
                     img_bytes = img_encoded.tobytes()
 
@@ -128,7 +139,7 @@ def main(limit, model, caps):
 
         current_time = time.time()
 
-        if(current_time - start_time >= int(os.getenv("duration"))): 
+        if(current_time - start_time >= int(os.getenv("delay"))): 
             detected = False
         if(detected == True):
             continue
@@ -142,8 +153,8 @@ def main(limit, model, caps):
 
         if(current_time - start_time > 5):
             print(f'current time : {current_time}, people_count : {average}')
-            if(max_in_5_secs >= limit):
-                warn(caps)
+            if(max_in_5_secs > limit):
+                warn(caps, model, int(os.getenv("delay")))
                 detected = True
 
             start_time = current_time
@@ -151,4 +162,13 @@ def main(limit, model, caps):
 
 
 if __name__ == "__main__":
-    main(int(os.getenv("limit")), YOLO(os.getenv("model")), [cv2.VideoCapture(int(os.getenv("cam1"))), cv2.VideoCapture(int(os.getenv("cam2")))])
+    async def async_main():
+        loop = asyncio.get_event_loop()
+        model = await loop.run_in_executor(None, YOLO, os.getenv("model"))
+        caps = [
+            await loop.run_in_executor(None, cv2.VideoCapture, int(os.getenv("cam1"))),
+            await loop.run_in_executor(None, cv2.VideoCapture, int(os.getenv("cam2")))
+        ]
+        await loop.run_in_executor(None, main, int(os.getenv("limit")), model, caps)
+
+    asyncio.run(async_main())
