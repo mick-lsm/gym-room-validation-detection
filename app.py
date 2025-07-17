@@ -2,8 +2,9 @@ import cv2
 from ultralytics import YOLO
 import time
 import smtplib
-from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 from dotenv import load_dotenv
 import os
 import winsound
@@ -53,9 +54,9 @@ def warn():
     beep_beep_alert()
     send_email(os.getenv("sender"), os.getenv("password"), os.getenv("receiver"), "Too many people", "Too many people")
 
-def send_email(sender_username, sender_password, recipient_email, subject, message_body):
+def send_email(sender_username, sender_password, recipient_email, subject, message_body, caps):
     """
-    Send an email using SMTP protocol
+    Send an email with the current frame of the video capture array as an attachment.
     
     Parameters:
     - sender_username: Your email address (e.g., 'your_email@gmail.com')
@@ -63,6 +64,7 @@ def send_email(sender_username, sender_password, recipient_email, subject, messa
     - recipient_email: The recipient's email address
     - subject: Email subject line
     - message_body: The content of the email
+    - caps: Video capture array (OpenCV frame) to attach as an image
     
     Returns:
     - True if email sent successfully, False otherwise
@@ -76,6 +78,21 @@ def send_email(sender_username, sender_password, recipient_email, subject, messa
         
         # Attach the message body
         message.attach(MIMEText(message_body, 'plain'))
+        
+        # Save the current frame as an image and attach it
+        if caps is not None:
+            # Convert the frame to RGB (OpenCV uses BGR by default)
+            frame_rgb = cv2.cvtColor(caps, cv2.COLOR_BGR2RGB)
+            
+            # Encode the frame as JPEG in memory
+            _, img_encoded = cv2.imencode('.jpg', frame_rgb)
+            img_bytes = img_encoded.tobytes()
+            
+            # Attach the image
+            img_attachment = MIMEImage(img_bytes, name='current_frame.jpg')
+            message.attach(img_attachment)
+        
+        # SMTP server configuration (for Gmail)
         smtp_server = 'smtp.gmail.com'
         smtp_port = 587
         
@@ -91,6 +108,7 @@ def send_email(sender_username, sender_password, recipient_email, subject, messa
     except Exception as e:
         print(f"Error sending email: {e}")
         return False
+    
 
 def main(limit, model, caps):
     detected = False
@@ -104,7 +122,7 @@ def main(limit, model, caps):
 
         current_time = time.time()
 
-        if(current_time - start_time >= 120): 
+        if(current_time - start_time >= os.getenv("duration")): 
             detected = False
         if(detected == True):
             continue
