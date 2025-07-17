@@ -6,6 +6,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 import os
+import winsound
 
 load_dotenv()  # Loads variables from .env into the environment
 
@@ -39,8 +40,17 @@ def calculate_people_count_by_frame(model, caps):
 
     return round(average)
 
+
+def beep_beep_alert():
+    for __ in range(3):  # Nine beeps
+        for _ in range(3):  # Three beeps
+            winsound.Beep(1000, 200)  # Frequency: 1000Hz, Duration: 200ms
+            time.sleep(0.1)  # Short pause between beeps
+
+
 def warn():
     print("Too many people")
+    beep_beep_alert()
     send_email(os.getenv("sender"), os.getenv("password"), os.getenv("receiver"), "Too many people", "Too many people")
 
 def send_email(sender_username, sender_password, recipient_email, subject, message_body):
@@ -114,9 +124,7 @@ def main(limit, model, caps):
 
             start_time = current_time
             max_in_5_secs = 0
-        
-
 
 
 if __name__ == "__main__":
-    main(3, YOLO(os.getenv("model")), [cv2.VideoCapture(int(os.getenv("cam1"))), cv2.VideoCapture(int(os.getenv("cam2")))])
+    main(int(os.getenv("limit")), YOLO(os.getenv("model")), [cv2.VideoCapture(int(os.getenv("cam1"))), cv2.VideoCapture(int(os.getenv("cam2")))])
